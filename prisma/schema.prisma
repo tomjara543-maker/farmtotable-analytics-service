@@ -1,0 +1,102 @@
+generator client {
+  provider     = "prisma-client"
+  output       = "../src/generated/prisma"
+  moduleFormat = "cjs"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model EventLog {
+  eventId    String   @id @map("event_id")
+  eventType  String   @map("event_type")
+  source     String
+  occurredAt DateTime @map("occurred_at")
+  data       Json
+
+  @@index([occurredAt])
+  @@map("event_log")
+}
+
+model OrderStat {
+  orderId   String   @id @map("order_id")
+  status    String
+  total     Int
+  createdAt DateTime @map("created_at")
+
+  @@map("order_stats")
+}
+
+model PaymentStat {
+  paymentId String   @id @map("payment_id")
+  orderId   String   @map("order_id")
+  amount    Int
+  status    String
+  createdAt DateTime @map("created_at")
+
+  @@index([orderId])
+  @@map("payment_stats")
+}
+
+model ProductSale {
+  id        String @id @default(uuid())
+  orderId   String @map("order_id")
+  productId String @map("product_id")
+  name      String
+  kg        Float
+  revenue   Float
+
+  @@index([orderId])
+  @@map("product_sales")
+}
+
+model CommissionStat {
+  orderId    String  @map("order_id")
+  producerId String  @map("producer_id")
+  commission Int
+  cancelled  Boolean @default(false)
+
+  @@id([orderId, producerId])
+  @@map("commission_stats")
+}
+
+model BatchExpiry {
+  batchId           String @id @map("batch_id")
+  productId         String @map("product_id")
+  quantityAvailable Float  @map("quantity_available")
+  expiryEstimate    String @map("expiry_estimate")
+
+  @@map("batch_expiry")
+}
+
+model DeliveryStat {
+  deliveryId      String  @id @map("delivery_id")
+  orderId         String  @map("order_id")
+  status          String
+  coldChainBreach Boolean @default(false) @map("cold_chain_breach")
+
+  @@index([orderId])
+  @@map("delivery_stats")
+}
+
+model UserStat {
+  userId String @id @map("user_id")
+  role   String
+
+  @@map("user_stats")
+}
+
+model ProducerStat {
+  producerId String @id @map("producer_id")
+
+  @@map("producer_stats")
+}
+
+model ProcessedEvent {
+  eventId     String   @id @map("event_id")
+  eventType   String   @map("event_type")
+  processedAt DateTime @default(now()) @map("processed_at")
+
+  @@map("processed_events")
+}
