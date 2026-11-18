@@ -6,11 +6,33 @@ import { daysBetween, round2, toDate, today } from "./http";
 const SOLD = ["PAID", "IN_DELIVERY", "DELIVERED"];
 const IN_PROGRESS = ["PENDING", "ASSIGNED", "IN_TRANSIT"];
 
+export const clampDays = (raw: unknown) => Math.min(90, Math.max(7, Number(raw) || 14));
+
+export function buildSalesByDay(paid: { amount: number; createdAt: Date }[], days: number, now = Date.now()) {
+  return Array.from({ length: days }, (_, i) => {
+    const date = toDate(new Date(now - (days - 1 - i) * 86_400_000));
+    const dayPayments = paid.filter((p) => toDate(p.createdAt) === date);
+    return { date, revenue: dayPayments.reduce((s, p) => s + p.amount, 0), orders: dayPayments.length };
+  });
+}
+
+export function rankTopProducts(sales: { productId: string; name: string; kg: number; revenue: number }[], limit = 5) {
+  const byProduct = new Map<string, { name: string; kg: number; revenue: number }>();
+  for (const s of sales) {
+    const acc = byProduct.get(s.productId) ?? { name: s.name, kg: 0, revenue: 0 };
+    byProduct.set(s.productId, { name: s.name, kg: round2(acc.kg + s.kg), revenue: acc.revenue + s.revenue });
+  }
+  return [...byProduct]
+    .map(([productId, v]) => ({ productId, name: v.name, kg: v.kg, revenue: Math.round(v.revenue) }))
+    .sort((a, b) => b.revenue - a.revenue)
+    .slice(0, limit);
+}
+
 export function analyticsRoutes() {
   const router = Router();
 
   router.get("/dashboard", requireUser("ADMIN"), async (req, res) => {
-    const days = Math.min(90, Math.max(7, Number(req.query.days) || 14));
+    const days = clampDays(req.query.days);
     const t = today();
 
     const [paid, orders, sold, commissions, batches, deliveries, producers, buyers, events] = await Promise.all([
@@ -27,22 +49,10 @@ export function analyticsRoutes() {
 
     const revenue = paid.reduce((s, p) => s + p.amount, 0);
 
-    const salesByDay = Array.from({ length: days }, (_, i) => {
-      const date = toDate(new Date(Date.now() - (days - 1 - i) * 86_400_000));
-      const dayPayments = paid.filter((p) => toDate(p.createdAt) === date);
-      return { date, revenue: dayPayments.reduce((s, p) => s + p.amount, 0), orders: dayPayments.length };
-    });
+    const salesByDay = buildSalesByDay(paid, days);
 
     const sales = await prisma.productSale.findMany({ where: { orderId: { in: sold.map((o) => o.orderId) } } });
-    const byProduct = new Map<string, { name: string; kg: number; revenue: number }>();
-    for (const s of sales) {
-      const acc = byProduct.get(s.productId) ?? { name: s.name, kg: 0, revenue: 0 };
-      byProduct.set(s.productId, { name: s.name, kg: round2(acc.kg + s.kg), revenue: acc.revenue + s.revenue });
-    }
-    const topProducts = [...byProduct]
-      .map(([productId, v]) => ({ productId, name: v.name, kg: v.kg, revenue: Math.round(v.revenue) }))
-      .sort((a, b) => b.revenue - a.revenue)
-      .slice(0, 5);
+    const topProducts = rankTopProducts(sales);
 
     const ordersByStatus: Record<string, number> = {};
     for (const o of orders) ordersByStatus[o.status] = (ordersByStatus[o.status] ?? 0) + 1;
